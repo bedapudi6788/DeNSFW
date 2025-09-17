@@ -147,6 +147,7 @@ struct ResultsView: View {
                 Text("Are you sure you want to permanently delete \(selectedCount) photo(s)? This action cannot be undone.")
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
     
     private func toggleSelectAll() {

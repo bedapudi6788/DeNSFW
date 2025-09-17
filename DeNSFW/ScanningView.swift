@@ -104,5 +104,6 @@ struct ScanningView: View {
                 ResultsView(photoManager: photoManager, isPresented: $isPresented)
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
