@@ -151,6 +151,75 @@ class PhotoLibraryManager: ObservableObject {
         }
     }
     
+    func movePhotosToSecureFolder(_ photos: [PhotoItem]) async throws {
+        let fileManager = FileManager.default
+        guard let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "DeNSFW", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not find documents directory"])
+        }
+
+        let secureFolderURL = documentsDirectory.appendingPathComponent("SecureFolder")
+
+        if !fileManager.fileExists(atPath: secureFolderURL.path) {
+            try fileManager.createDirectory(at: secureFolderURL, withIntermediateDirectories: true)
+        }
+
+        var assetsToDelete: [PHAsset] = []
+
+        for photo in photos {
+            let asset = photo.asset
+
+            // Get image data
+            let data = await withCheckedContinuation { (continuation: CheckedContinuation<Data?, Never>) in
+                let options = PHImageRequestOptions()
+                options.isSynchronous = false
+                options.deliveryMode = .highQualityFormat
+                options.version = .current
+                options.isNetworkAccessAllowed = true
+
+                PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+                    continuation.resume(returning: data)
+                }
+            }
+
+            if let data = data {
+                // Generate filename
+                // Try to get original filename if possible, otherwise UUID
+                let resources = PHAssetResource.assetResources(for: asset)
+                let filename = resources.first?.originalFilename ?? "\(UUID().uuidString).jpg"
+                let fileURL = secureFolderURL.appendingPathComponent(filename)
+
+                // Handle duplicate filenames
+                let finalFileURL: URL
+                if fileManager.fileExists(atPath: fileURL.path) {
+                     let newFilename = "\(UUID().uuidString)_\(filename)"
+                     finalFileURL = secureFolderURL.appendingPathComponent(newFilename)
+                } else {
+                    finalFileURL = fileURL
+                }
+
+                do {
+                    try data.write(to: finalFileURL)
+                    assetsToDelete.append(asset)
+                } catch {
+                    print("Error saving file: \(error)")
+                }
+            }
+        }
+
+        // Delete original photos
+        if !assetsToDelete.isEmpty {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.deleteAssets(NSArray(array: assetsToDelete))
+            }
+
+            await MainActor.run {
+                self.nsfwPhotos.removeAll { photo in
+                    assetsToDelete.contains(where: { $0.localIdentifier == photo.asset.localIdentifier })
+                }
+            }
+        }
+    }
+
     func togglePhotoSelection(at index: Int) {
         nsfwPhotos[index].isSelected.toggle()
     }
