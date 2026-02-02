@@ -11,6 +11,7 @@ struct ResultsView: View {
     @ObservedObject var photoManager: PhotoLibraryManager
     @Binding var isPresented: Bool
     @State private var showDeleteConfirmation = false
+    @State private var showMoveConfirmation = false
     @State private var allSelected = false
     
     let columns = [
@@ -116,6 +117,42 @@ struct ResultsView: View {
                             .shadow(color: .black.opacity(0.3), radius: 3)
                         }
                         .disabled(selectedCount == 0)
+
+                        Button(action: {
+                            if selectedCount > 0 {
+                                showMoveConfirmation = true
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "folder.fill.badge.plus")
+                                Text("Move to Secure Folder (\(selectedCount))")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                selectedCount > 0 ?
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color(red: 0.2, green: 0.6, blue: 1.0),
+                                        Color(red: 0.3, green: 0.7, blue: 1.0)
+                                    ]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ) :
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color.gray.opacity(0.2),
+                                        Color.gray.opacity(0.3)
+                                    ]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                            .shadow(color: .black.opacity(0.3), radius: 3)
+                        }
+                        .disabled(selectedCount == 0)
                     }
                     .padding()
                     .background(Color(red: 0.1, green: 0.15, blue: 0.25).opacity(0.8))
@@ -146,6 +183,16 @@ struct ResultsView: View {
             } message: {
                 Text("Are you sure you want to permanently delete \(selectedCount) photo(s)? This action cannot be undone.")
             }
+            .alert("Move Photos", isPresented: $showMoveConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Move", role: .none) {
+                    Task {
+                        await moveSelectedPhotos()
+                    }
+                }
+            } message: {
+                Text("Move \(selectedCount) photo(s) to Secure Folder? They will be deleted from your Photo Library and saved in the app's secure documents folder.")
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -170,6 +217,16 @@ struct ResultsView: View {
             allSelected = false
         } catch {
             print("Error deleting photos: \(error)")
+        }
+    }
+
+    private func moveSelectedPhotos() async {
+        let photosToMove = photoManager.getSelectedPhotos()
+        do {
+            try await photoManager.movePhotosToSecureFolder(photosToMove)
+            allSelected = false
+        } catch {
+            print("Error moving photos: \(error)")
         }
     }
 }
